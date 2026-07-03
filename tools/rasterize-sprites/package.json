@@ -1,0 +1,11 @@
+{
+  "name": "rasterize-sprites",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "rasterize": "node rasterize.mjs"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

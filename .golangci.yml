@@ -1,0 +1,39 @@
+# golangci-lint v2 configuration.
+# Lints the default (CLI) build; the Wails GUI files are behind the `desktop`
+# build tag and need platform webview deps, so they are intentionally not linted
+# in CI (which builds and tests the same pure-Go CLI path).
+version: "2"
+
+linters:
+  # The standard set: errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - misspell
+    - unconvert
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      # QF* are quickfix style suggestions, not correctness issues.
+      - linters: [staticcheck]
+        text: QF1002
+      # GUI glue compiled only under the `desktop`/`bindings` build tag looks
+      # unused to the default CLI analysis (CI lints the same pure-Go build it
+      # ships). app.startup/app.ctx are wired up by Wails in the desktop build.
+      - path: app\.go
+        linters: [unused]
+      - path: internal/gen/sprites\.go
+        text: spriteBaseSize
+        linters: [unused]
+      # rng.go intentionally mirrors the upstream JS randomInteger() formula
+      # (ceil(min)/floor(max)) even though min/max are ints here.
+      - path: internal/gen/rng\.go
+        text: SA4015
+        linters: [staticcheck]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
