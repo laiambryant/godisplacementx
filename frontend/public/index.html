@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>godisplacementx</title>
+    <link rel="stylesheet" href="/app.css" />
+    <script src="/vendor/htmx.min.js"></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="masthead">
+        <div class="wordmark">
+          <span class="pip" aria-hidden="true"></span>
+          <span><span class="dim">go</span><b>placementx</b></span>
+        </div>
+        <div class="tag">
+          <div class="eyebrow">Displacement field synthesizer</div>
+          <div class="muted" id="build-tag">field instrument</div>
+        </div>
+      </header>
+
+      <!-- The whole interactive surface is one form. htmx posts it to Go,
+           which renders the height field and swaps fragments back in.
+           pngData is large, so it is excluded from every request except Save. -->
+      <form
+        id="console"
+        class="console"
+        hx-params="not pngData"
+        hx-on::before-request="this.dataset.busy='1'"
+      >
+        <section class="col-monitor">
+          <div class="section-head">
+            <span class="eyebrow">Field monitor</span>
+          </div>
+
+          <!-- replaced by /api/monitor on load and by /api/render after each run -->
+          <div
+            id="monitor"
+            hx-get="/api/monitor"
+            hx-trigger="load"
+            hx-target="#monitor"
+            hx-swap="outerHTML"
+          >
+            <div class="field">
+              <span class="reg tl"></span><span class="reg tr"></span>
+              <span class="reg bl"></span><span class="reg br"></span>
+              <div class="empty"><div class="crosshair"><span></span></div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="col-rack">
+          <div class="section-head">
+            <span class="eyebrow">Rack</span>
+            <button
+              type="button"
+              class="btn btn--sm"
+              hx-post="/api/randomize"
+              hx-target="#rack"
+              hx-swap="outerHTML"
+            >
+              Randomize all
+            </button>
+          </div>
+
+          <!-- replaced by /api/controls on load -->
+          <div
+            id="rack"
+            class="rack"
+            hx-get="/api/controls"
+            hx-trigger="load"
+            hx-target="#rack"
+            hx-swap="outerHTML"
+          >
+            <p class="muted">Loading controls…</p>
+          </div>
+        </section>
+      </form>
+
+      <footer class="footer">
+        <span>Procedural displacement &amp; height-map generator</span>
+        <span
+          id="version"
+          class="muted"
+          hx-get="/api/version"
+          hx-trigger="load"
+          hx-swap="innerHTML"
+        ></span>
+      </footer>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

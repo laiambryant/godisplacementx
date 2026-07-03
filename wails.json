@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "godisplacementx",
+  "outputfilename": "godisplacementx",
+  "author": {
+    "name": "Liam Bryant",
+    "email": "liambryant@outlook.it"
+  },
+  "info": {
+    "productName": "godisplacementx",
+    "comments": "Procedural displacement / sci-fi height-map generator"
+  }
+}
