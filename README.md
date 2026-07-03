@@ -1,39 +1,114 @@
-# Displacement X
+# godisplacementx
 
-Procedural displacement sci-fi maps generator. Web-based alternative to [JSplacement](https://www.google.com/search?q=JSplacement) for [Blender](https://www.blender.org/).
+A Go port of [Displacement X](https://displacementx.pages.dev/) — a procedural
+generator of grayscale **displacement / height maps** (a sci-fi "JSplacement"
+aesthetic) for 3D software such as Blender, Cinema4D and Octane.
 
-Live at ▶ **[displacementx.pages.dev](https://displacementx.pages.dev/)**
+It ships as a **single executable** that is both:
 
-<img src="./public/og.png" alt="Displacement X - social image preview"/>
+- a **CLI** for headless / scripted generation, and
+- a **cross-platform GUI** (Windows / macOS / Linux) built with
+  [Wails](https://wails.io/) that reuses the original React UI.
 
-## FAQ
+The image-generation engine is pure Go (`internal/gen`) and is shared by both
+front-ends, so the CLI and GUI produce identical results.
 
-### What is it used for?
+## Features
 
-The software can be used for generating grayscale height maps for their further application in various 3D rendering software such as Blender, Cinema4D, OctaneRender, etc.
+- All six drawing primitives: rectangles, grid, columns, rows, lines, sprites.
+- All 16 canvas composition (blend) modes, implemented as a software compositor.
+- Seamless / tileable texture mode.
+- Sprite packs (`classic`, `bigdata`, `aggromaxx`, `crappack`), pre-rasterized
+  from the original SVGs and embedded in the binary.
+- Post-processing: **normal map**, **color map** (via a custom gradient), and
+  **invert**.
+- Reproducible output via `--seed` (the original used an unseeded RNG).
+- Resolutions 1024 / 2048 / 4096 / 8192 (the CLI also accepts arbitrary sizes).
 
-### Does it aim to replace the original `JSplacement` software?
+## Running
 
-No. The application doesn't aim to replace `JSplacement`, but rather to provide a web-based alternative for those who don't want to find its downloads online and install it. Features-wise, it implements some from `JSplacement`, but also has some that didn't exist in it before (e.g., "Composition modes" or "Custom gradient generator").
+### CLI
 
-### What happened to the original `JSplacement` software?
+```sh
+# Build the CLI (pure Go, cross-compiles without a C toolchain):
+go build -o godisplacementx .
 
-Unfortunately, the original `JSplacement` software is no longer maintained and it's gone. The author has abandoned the project and removed all the downloads from the internet.
+# Generate a 2048x2048 map with a fixed seed:
+./godisplacementx generate --seed 42 --resolution 2048 -o out.png
 
-Some links:
+# Normal map / color map / invert:
+./godisplacementx generate --seed 42 --mode normal -o normal.png
+./godisplacementx generate --seed 42 --mode color --gradient "#00ffff,#9500ff,#ffe500" -o color.png
+./godisplacementx generate --seed 42 --invert -o inverted.png
 
-- Reddit post: [What happened to JSplacement](https://www.reddit.com/r/blender/comments/zfwmjr/does_anyone_know_what_happened_to_jsplacement/).
-- Web port of `JSplacement`: [JSPlacementWeb](https://github.com/satelllte/JSPlacementWeb) _(missing some features)_.
-- Consider supporting `Windmill` - the author of `JSPlacement`: [Website](https://windmillart.net/), [PayPal/WMillArt](https://www.paypal.com/paypalme/WMillArt), [Ko-fi/windmill](https://ko-fi.com/windmill).
+# Sprites and seamless tiling:
+./godisplacementx generate --sprites --sprite-packs classic,crappack -o sprites.png
+./godisplacementx generate --seamless -o tile.png
 
-### Any future plans for `Displacement X`?
+# Use a full JSON config (the same shape the GUI uses):
+./godisplacementx randomize --seed 1 -o params.json
+./godisplacementx generate --config params.json -o out.png
+```
 
-No particular plans. I've opened the source code of this project to everyone, so let's see how it goes.
+Run `./godisplacementx generate --help` for the full flag list. Explicit flags
+override values loaded from `--config`.
 
-### I want to share my work done with the help of `Displacement X`. Where can I do that?
+### GUI
 
-Feel free to open an issue in this repository to share your work. I'd love to see what you've created and showcase it right here!
+The GUI is built with Wails. Prerequisites: Go, Node.js, and the platform
+WebView (WebView2 on Windows — usually preinstalled; WebKitGTK on Linux;
+WKWebView on macOS). Install the Wails CLI once:
 
-## Contributing
+```sh
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+```
 
-Check out [CONTRIBUTING.md](./CONTRIBUTING.md) guide.
+Then, from the repo root:
+
+```sh
+wails dev      # hot-reload development
+wails build    # produces build/bin/godisplacementx(.exe)
+```
+
+The resulting binary opens the GUI when launched with no arguments, and behaves
+as the CLI when given a subcommand (on Windows it attaches to the parent console
+so CLI output is visible).
+
+## Project layout
+
+```
+main.go              Entry point: dispatches CLI vs GUI
+app.go               Wails-bound backend (Generate, DefaultParams)
+app_desktop.go       Native save dialog (desktop build)
+gui.go / gui_stub.go GUI launch (behind the `desktop`/`bindings` build tags)
+internal/gen/        Pure-Go generation engine (the core port)
+internal/cli/        cobra CLI (generate / randomize / version)
+frontend/            Vite + React UI (ported from Displacement X)
+tools/rasterize-sprites/  Build-time SVG -> PNG rasterizer (Node + resvg)
+```
+
+`go build ./...` (no tags) builds the CLI only; the GUI code is behind the
+`desktop` build tag that `wails build` / `wails dev` set automatically.
+
+## Regenerating sprites
+
+Sprite PNGs under `internal/gen/assets/sprites_png/` are generated from the SVGs
+in `internal/gen/assets/sprites/` and committed, so a normal build needs no
+Node. Only re-run this if the sprite SVGs change:
+
+```sh
+cd tools/rasterize-sprites
+npm install
+npm run rasterize
+```
+
+## Tests
+
+```sh
+go test ./...
+```
+
+## Credits
+
+Original [Displacement X](https://github.com/satelllte/displacementx) by
+@satelllte; sprites powered by JSplacement.
