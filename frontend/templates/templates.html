@@ -1,0 +1,141 @@
+{{define "rack"}}<div id="rack" class="rack">
+  {{range .Strips}}{{template "strip" .}}{{end}}
+</div>{{end}}
+
+
+{{define "strip"}}<div id="{{.ID}}" class="strip{{if and .HasToggle (not .Enabled)}} off{{end}}">
+  <header>
+    {{if .HasToggle}}<label class="toggle" title="Enable {{.Title}}">
+      <input type="checkbox" name="{{.EnableName}}" value="on"{{if .Enabled}} checked{{end}}>
+      <span class="led" aria-hidden="true"></span>
+    </label>{{end}}
+    <span class="title">{{.Title}}</span>
+    <span class="spacer"></span>
+    {{if .RandLayer}}<button type="button" class="btn btn--sm btn--ghost"
+      title="Randomize {{.Title}}"
+      hx-post="/api/randomize?layer={{.RandLayer}}"
+      hx-target="#{{.ID}}" hx-swap="outerHTML">&#x21bb;</button>{{end}}
+  </header>
+  <div class="body">
+    {{range .Faders}}{{template "fader" .}}{{end}}
+    {{if eq .Kind "basics"}}<label class="inline-check">
+      <input type="checkbox" name="seamlessTextureEnabled" value="on"{{if .SeamlessOn}} checked{{end}}>
+      <span class="box" aria-hidden="true"></span>
+      <span>Seamless texture</span>
+    </label>{{end}}
+    {{if eq .Kind "sprites"}}<div>
+      <div class="group-label">Packs <span class="extra">bundled sprite art</span></div>
+      <div class="chips">
+        {{range .Packs}}<label class="chip"><input type="checkbox" name="spritesPacks" value="{{.Value}}"{{if .Checked}} checked{{end}}><span>{{.Label}}</span></label>{{end}}
+      </div>
+    </div>
+    <label class="inline-check">
+      <input type="checkbox" name="spritesRotationEnabled" value="on"{{if .RotateOn}} checked{{end}}>
+      <span class="box" aria-hidden="true"></span>
+      <span>Rotate sprites</span>
+    </label>{{end}}
+    {{if eq .Kind "other"}}<div>
+      <div class="group-label">Composition modes</div>
+      <div class="chips">
+        {{range .Modes}}<label class="chip"><input type="checkbox" name="compositionModes" value="{{.Value}}"{{if .Checked}} checked{{end}}><span>{{.Label}}</span></label>{{end}}
+      </div>
+    </div>{{end}}
+  </div>
+</div>{{end}}
+
+
+{{define "fader"}}{{if .Dual}}<div class="fader" data-kind="dual">
+  <span class="flabel">{{.Label}}</span>
+  <output class="readout">{{.Lo}} &#8212; {{.Hi}}</output>
+  <div class="dual">
+    <div class="base"></div>
+    <div class="fill"></div>
+    <input class="lo" type="range" name="{{.Name}}Min" min="{{.Min}}" max="{{.Max}}" step="{{.Step}}" value="{{.Lo}}" aria-label="{{.Label}} minimum">
+    <input class="hi" type="range" name="{{.Name}}Max" min="{{.Min}}" max="{{.Max}}" step="{{.Step}}" value="{{.Hi}}" aria-label="{{.Label}} maximum">
+  </div>
+</div>{{else}}<div class="fader" data-kind="single">
+  <span class="flabel">{{.Label}}</span>
+  <output class="readout">{{.Val}}</output>
+  <input class="single" type="range" name="{{.Name}}" min="{{.Min}}" max="{{.Max}}" step="{{.Step}}" value="{{.Val}}" aria-label="{{.Label}}">
+</div>{{end}}{{end}}
+
+
+{{define "monitor"}}<div id="monitor">
+  <div id="field" class="field">
+    <span class="reg tl"></span><span class="reg tr"></span><span class="reg bl"></span><span class="reg br"></span>
+    {{if .HasImage}}<img src="{{.PNG}}" alt="Displacement field {{.Width}} by {{.Height}}">{{else}}<div class="empty">
+      <div class="crosshair" aria-hidden="true"><span></span></div>
+      <div class="eyebrow">No field acquired</div>
+    </div>{{end}}
+    <div class="acquiring">Acquiring field</div>
+  </div>
+
+  <div class="status">
+    {{if .Err}}<span class="err">{{.Err}}</span>
+    {{else if .HasImage}}<span><span class="k">seed</span> <span class="v seed">{{.SeedHex}}</span></span>
+    <span><span class="k">render</span> <span class="v">{{.DurationMS}} ms</span></span>
+    <span><span class="k">field</span> <span class="v">{{.Width}}&#215;{{.Height}}</span></span>
+    {{else}}<span class="muted">Press Render to acquire a {{.Resolution}}&#215;{{.Resolution}} field</span>{{end}}
+    <span id="save-status"></span>
+  </div>
+
+  <input type="hidden" name="seed" value="{{.SeedDec}}">
+  <input type="hidden" name="mode" value="{{.Mode}}">
+  <input type="hidden" name="invert" value="{{if .Invert}}true{{else}}false{{end}}">
+  {{if .HasImage}}<input type="hidden" name="pngData" value="{{.PNG}}">{{end}}
+
+  <div class="row" style="margin-top:14px">
+    <button type="button" class="btn btn--signal"
+      hx-post="/api/render" hx-vals='{"action":"render"}'
+      hx-target="#monitor" hx-swap="outerHTML" hx-indicator="#field">Render</button>
+    <button type="button" class="btn"{{if not .HasImage}} disabled{{end}}
+      hx-post="/api/save" hx-params="*"
+      hx-target="#save-status" hx-swap="innerHTML">Save PNG</button>
+  </div>
+
+  <div class="field-block">
+    <span class="eyebrow">Resolution</span>
+    <div class="seg">
+      {{range .Resolutions}}<label><input type="radio" name="resolution" value="{{.}}"{{if eq . $.Resolution}} checked{{end}}
+        hx-post="/api/monitor" hx-target="#monitor" hx-swap="outerHTML"><span>{{.}}</span></label>{{end}}
+    </div>
+    <span class="note">Changing resolution clears the current field.</span>
+  </div>
+
+  <div class="field-block">
+    <span class="eyebrow">Post-process</span>
+    <div class="row">
+      <button type="button" class="btn btn--sm"{{if not .HasImage}} disabled{{end}}
+        hx-post="/api/render" hx-vals='{"action":"invert"}'
+        hx-target="#monitor" hx-swap="outerHTML" hx-indicator="#field">{{if .Invert}}Uninvert{{else}}Invert{{end}}</button>
+      <button type="button" class="btn btn--sm"{{if not .HasImage}} disabled{{end}}
+        hx-post="/api/render" hx-vals='{"action":"normal"}'
+        hx-target="#monitor" hx-swap="outerHTML" hx-indicator="#field">{{if eq .Mode "normal"}}Show original{{else}}Preview normal{{end}}</button>
+      <button type="button" class="btn btn--sm"{{if not .HasImage}} disabled{{end}}
+        hx-post="/api/render" hx-vals='{"action":"color"}'
+        hx-target="#monitor" hx-swap="outerHTML" hx-indicator="#field">{{if eq .Mode "color"}}Show original{{else}}Preview color{{end}}</button>
+    </div>
+  </div>
+
+  {{template "gradient" .Gradient}}
+</div>{{end}}
+
+
+{{define "gradient"}}<div id="gradient" class="gradient field-block">
+  <span class="eyebrow">Color gradient</span>
+  <div class="bar" style="background:{{.BarCSS}}"></div>
+  <div class="stops">
+    {{range $i, $hex := .Stops}}<div class="stop">
+      <input type="color" name="gradient" value="{{$hex}}" aria-label="Color stop {{$i}}">
+      <span class="hex">{{$hex}}</span>
+      <button type="button" class="btn btn--sm"{{if not $.CanRemove}} disabled{{end}}
+        hx-post="/api/gradient?op=remove&i={{$i}}" hx-target="#gradient" hx-swap="outerHTML">Remove</button>
+    </div>{{end}}
+  </div>
+  <div class="row" style="margin-top:8px">
+    <button type="button" class="btn btn--sm"{{if not .CanAdd}} disabled{{end}}
+      hx-post="/api/gradient?op=add" hx-target="#gradient" hx-swap="outerHTML">Add stop</button>
+    <button type="button" class="btn btn--sm"
+      hx-post="/api/gradient?op=randomize" hx-target="#gradient" hx-swap="outerHTML">Randomize</button>
+  </div>
+</div>{{end}}
