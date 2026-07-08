@@ -82,6 +82,35 @@ func TestBlendRunSIMDMatchesScalar(t *testing.T) {
 	}
 }
 
+// TestBlendSourceOverSIMDMatchesScalar checks the dedicated integer source-over
+// kernel against the scalar reference within +/-1 per channel, over opaque and
+// non-opaque backdrops (the latter exercises the per-chunk scalar fallback).
+func TestBlendSourceOverSIMDMatchesScalar(t *testing.T) {
+	// 37 pixels: not a multiple of 4, so the SIMD tail path is exercised.
+	const n = 37
+	grays := []uint8{0, 1, 64, 128, 191, 254, 255}
+	alphas := []int{1, 25, 50, 75, 100}
+
+	for _, opaque := range []bool{true, false} {
+		for _, gray := range grays {
+			for _, aPct := range alphas {
+				g := float64(gray) / 255
+				sa := float64(aPct) / 100
+
+				want := makeBackdrop(n, opaque)
+				got := makeBackdrop(n, opaque)
+				blendRunScalar(want, 0, n, g, sa, ModeSourceOver)
+				blendSourceOverSIMD(got, 0, n, g, sa)
+
+				if idx, d := maxDiff(want, got); d > blendTolerance {
+					t.Errorf("gray=%d alpha=%d opaque=%v: max byte diff %d at %d (scalar=%d simd=%d)",
+						gray, aPct, opaque, d, idx, want[idx], got[idx])
+				}
+			}
+		}
+	}
+}
+
 func TestFillSIMDMatchesScalar(t *testing.T) {
 	for _, n := range []int{0, 1, 7, 8, 9, 100, 257} {
 		for _, gray := range []uint8{0, 17, 128, 255} {

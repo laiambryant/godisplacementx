@@ -47,6 +47,48 @@ func BenchmarkInvertAB(b *testing.B) {
 	}
 }
 
+// BenchmarkSourceOverAB compares the scalar source-over compositor against the
+// dedicated integer fixed-point kernel that production actually dispatches to.
+func BenchmarkSourceOverAB(b *testing.B) {
+	for _, res := range benchResolutions {
+		n := res * res
+		pix := opaqueBuf(res)
+		b.Run(fmt.Sprintf("scalar/%d", res), func(b *testing.B) {
+			b.SetBytes(int64(len(pix)))
+			for b.Loop() {
+				blendRunScalar(pix, 0, n, 0.5, 0.5, ModeSourceOver)
+			}
+		})
+		b.Run(fmt.Sprintf("simd/%d", res), func(b *testing.B) {
+			b.SetBytes(int64(len(pix)))
+			for b.Loop() {
+				blendSourceOverSIMD(pix, 0, n, 0.5, 0.5)
+			}
+		})
+	}
+}
+
+// BenchmarkSourceOverL2AB measures the compute-bound speed of the source-over
+// kernels on a cache-resident buffer (256x256 = 256 KiB, fits L2), isolating the
+// per-pixel work from main-memory bandwidth and sustained-AVX2 power throttling.
+func BenchmarkSourceOverL2AB(b *testing.B) {
+	const res = 256
+	n := res * res
+	pix := opaqueBuf(res)
+	b.Run("scalar", func(b *testing.B) {
+		b.SetBytes(int64(len(pix)))
+		for b.Loop() {
+			blendRunScalar(pix, 0, n, 0.5, 0.5, ModeSourceOver)
+		}
+	})
+	b.Run("simd", func(b *testing.B) {
+		b.SetBytes(int64(len(pix)))
+		for b.Loop() {
+			blendSourceOverSIMD(pix, 0, n, 0.5, 0.5)
+		}
+	})
+}
+
 func BenchmarkBlendAB(b *testing.B) {
 	for _, mode := range benchModes {
 		for _, res := range benchResolutions {
