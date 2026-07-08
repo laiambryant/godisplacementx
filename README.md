@@ -8,7 +8,8 @@ It ships as a **single executable** that is both:
 
 - a **CLI** for headless / scripted generation, and
 - a **cross-platform GUI** (Windows / macOS / Linux) built with
-  [Wails](https://wails.io/) that reuses the original React UI.
+  [Wails](https://wails.io/), whose UI is a static HTML + htmx port of the
+  original.
 
 The image-generation engine is pure Go (`internal/gen`) and is shared by both
 front-ends, so the CLI and GUI produce identical results.
@@ -25,13 +26,31 @@ front-ends, so the CLI and GUI produce identical results.
 - Reproducible output via `--seed` (the original used an unseeded RNG).
 - Resolutions 1024 / 2048 / 4096 / 8192 (the CLI also accepts arbitrary sizes).
 
+## Building
+
+The build system is a `Makefile` (recipes are POSIX sh — on Windows run them
+from Git Bash or WSL with `make` installed, e.g. `choco install make`):
+
+```sh
+make cli        # pure-Go CLI            -> build/bin/godisplacementx-cli
+make cli-simd   # experimental SIMD CLI  -> build/bin/godisplacementx-cli-simd
+make gui        # Wails desktop app (host-only)
+make test       # go test ./...
+make bench      # run benchmarks
+make help       # list all targets
+```
+
+`make cli` is the default build and is identical to before: pure Go, no
+`GOEXPERIMENT`, and it cross-compiles to every GOARCH. `make cli-simd` builds the
+experimental `simd/archsimd` variant — see [docs/SIMD.md](docs/SIMD.md).
+
 ## Running
 
 ### CLI
 
 ```sh
 # Build the CLI (pure Go, cross-compiles without a C toolchain):
-go build -o godisplacementx .
+make cli        # or: go build -o godisplacementx .
 
 # Generate a 2048x2048 map with a fixed seed:
 ./godisplacementx generate --seed 42 --resolution 2048 -o out.png
@@ -55,9 +74,10 @@ override values loaded from `--config`.
 
 ### GUI
 
-The GUI is built with Wails. Prerequisites: Go, Node.js, and the platform
-WebView (WebView2 on Windows — usually preinstalled; WebKitGTK on Linux;
-WKWebView on macOS). Install the Wails CLI once:
+The GUI is built with Wails. Prerequisites: Go and the platform WebView
+(WebView2 on Windows — usually preinstalled; WebKitGTK on Linux; WKWebView on
+macOS). The frontend is static HTML + htmx, so no Node toolchain is needed to
+build the app. Install the Wails CLI once:
 
 ```sh
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -67,7 +87,7 @@ Then, from the repo root:
 
 ```sh
 wails dev      # hot-reload development
-wails build    # produces build/bin/godisplacementx(.exe)
+make gui       # or: wails build — produces build/bin/godisplacementx(.exe)
 ```
 
 The resulting binary opens the GUI when launched with no arguments, and behaves
@@ -81,14 +101,16 @@ main.go              Entry point: dispatches CLI vs GUI
 app.go               Wails-bound backend (Generate, DefaultParams)
 app_desktop.go       Native save dialog (desktop build)
 gui.go / gui_stub.go GUI launch (behind the `desktop`/`bindings` build tags)
-internal/gen/        Pure-Go generation engine (the core port)
-internal/cli/        cobra CLI (generate / randomize / version)
-frontend/            Vite + React UI (ported from Displacement X)
+internal/gen/        Pure-Go generation engine (the core port + SIMD kernels)
+internal/cli/        cobra CLI (generate / bundle / randomize / version)
+frontend/            Static HTML + htmx UI (ported from Displacement X)
 tools/rasterize-sprites/  Build-time SVG -> PNG rasterizer (Node + resvg)
 ```
 
 `go build ./...` (no tags) builds the CLI only; the GUI code is behind the
-`desktop` build tag that `wails build` / `wails dev` set automatically.
+`desktop` build tag that `wails build` / `wails dev` set automatically. The
+`simd` build tag (with `GOEXPERIMENT=simd`) swaps in the SIMD compositing
+kernels — see [docs/SIMD.md](docs/SIMD.md).
 
 ## Regenerating sprites
 
@@ -105,7 +127,8 @@ npm run rasterize
 ## Tests
 
 ```sh
-go test ./...
+make test        # go test ./...
+make test-simd   # same, with GOEXPERIMENT=simd -tags simd (amd64)
 ```
 
 ## Credits
