@@ -51,12 +51,16 @@ func fillRun(pix []uint8, gray uint8) {
 //     the tight scalar float64 loop -- at 2 px/step the uint8<->float32
 //     conversions and the long archsimd chain dominate.
 //   - blendSourceOverSIMD (integer Q8) is the opposite: on a single wide run it
-//     is ~2-3x faster than scalar (no float conversion). But FillRect calls
-//     blendRun once per scanline of every primitive, and the real draw loop is
-//     dominated by many short runs (grid/line/column cells a few dozen pixels
-//     wide). There the per-call vector setup (coefficient + shuffle-index vectors)
-//     is not amortised and end-to-end Generate regresses ~15x. A production win
-//     would need that setup hoisted to FillRect (once per rect, not per row).
+//     is ~2-3x faster than scalar (no float conversion). But dispatching it from
+//     the draw loop regresses end-to-end Generate ~15x, and hoisting the per-run
+//     vector setup up to FillRect (once per rect) and inlining the row loop were
+//     BOTH tried and neither helps: even a handful of wide source-over rects
+//     (full-width lines) regress Generate several-fold. The cost is per SIMD
+//     dispatch from the interspersed draw loop (each FillRect is bracketed by
+//     scalar drawing/RNG code) -- vector-state/AVX-transition overhead under the
+//     experimental toolchain -- not setup amortisation. The micro-benchmark speed
+//     simply does not survive the real call pattern; a production win would need
+//     the whole draw loop restructured to stay in vector code across primitives.
 //
 // Only the wide, conversion-free, setup-free fill/invert passes use SIMD in
 // production, where they are ~6x faster.
@@ -155,9 +159,10 @@ func invertSIMD(pix []uint8) {
 //
 // This kernel is a per-pixel win over the scalar compositor on a single wide run
 // (see BenchmarkSourceOverAB / BenchmarkSourceOverL2AB) but is NOT on the
-// production path: the real draw loop issues many short runs and the per-call
-// vector setup is not amortised (see blendRun). It documents the integer approach
-// and is validated by the tolerance test.
+// production path: dispatching SIMD from the interspersed draw loop regresses
+// Generate ~15x, and neither setup hoisting nor inlining rescues it (see
+// blendRun). It documents the integer approach and is validated by the tolerance
+// test.
 func blendSourceOverSIMD(pix []uint8, di, n int, g, sa float64) {
 	if n <= 0 || sa <= 0 {
 		return
