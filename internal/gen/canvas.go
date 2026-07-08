@@ -13,6 +13,15 @@ func jsRound(x float64) int { return int(math.Floor(x + 0.5)) }
 type Canvas struct {
 	W, H int
 	Pix  []uint8 // len == W*H*4, R,G,B,A
+
+	// lut memoizes the most recently built blend table (blendlut.go). Consecutive
+	// FillRect calls within one drawing primitive share the same (gray, alpha,
+	// mode), so this single-entry cache collapses the per-rectangle table build
+	// into a one-time cost per primitive. It is scratch state, not part of the
+	// image, and is intentionally not copied by Clone.
+	lut      [256]uint8
+	lutKey   blendLUTKey
+	lutValid bool
 }
 
 // NewCanvas allocates a fully transparent canvas.
@@ -59,11 +68,34 @@ func (c *Canvas) FillRect(x, y, w, h int, gray uint8, alphaPct int, mode Composi
 	}
 	g := float64(gray) / 255
 	sa := float64(alphaPct) / 100
+	rw := x1 - x0
+
+	// Fast path: composite through a 256-entry blend table, turning the per-pixel
+	// float compositor into three table lookups (bit-identical to the scalar path;
+	// see blendlut.go). Build it only for rectangles big enough to amortise the
+	// build, but reuse a cached table for any size — successive rects in a grid /
+	// column / row share one (gray, alpha, mode), so the table is built once.
+	if sa > 0 && lutableMode(mode) {
+		key := blendLUTKey{gray: gray, alpha: alphaPct, mode: mode}
+		hit := c.lutValid && c.lutKey == key
+		if hit || rw*(y1-y0) >= blendLUTMinArea {
+			if !hit {
+				buildBlendLUT(&c.lut, g, sa, mode)
+				c.lutKey, c.lutValid = key, true
+			}
+			for yy := y0; yy < y1; yy++ {
+				row := yy * c.W * 4
+				blendRunLUT(c.Pix, row+x0*4, rw, &c.lut, g, sa, mode)
+			}
+			return
+		}
+	}
+
 	for yy := y0; yy < y1; yy++ {
 		row := yy * c.W * 4
 		// Each row is a contiguous run with a constant grayscale source,
 		// alpha and mode: the batch kernel blends the whole run at once.
-		blendRun(c.Pix, row+x0*4, x1-x0, g, sa, mode)
+		blendRun(c.Pix, row+x0*4, rw, g, sa, mode)
 	}
 }
 
