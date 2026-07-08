@@ -30,12 +30,7 @@ func (c *Canvas) Clone() *Canvas {
 
 // Fill sets every pixel to an opaque grayscale value (used for the background).
 func (c *Canvas) Fill(gray uint8) {
-	for i := 0; i < len(c.Pix); i += 4 {
-		c.Pix[i] = gray
-		c.Pix[i+1] = gray
-		c.Pix[i+2] = gray
-		c.Pix[i+3] = 255
-	}
+	fillRun(c.Pix, gray)
 }
 
 // FillRect blends a grayscale rectangle (gray in 0-255, alphaPct in 0-100) onto
@@ -66,9 +61,9 @@ func (c *Canvas) FillRect(x, y, w, h int, gray uint8, alphaPct int, mode Composi
 	sa := float64(alphaPct) / 100
 	for yy := y0; yy < y1; yy++ {
 		row := yy * c.W * 4
-		for xx := x0; xx < x1; xx++ {
-			blendInto(c.Pix, row+xx*4, g, g, g, sa, mode)
-		}
+		// Each row is a contiguous run with a constant grayscale source,
+		// alpha and mode: the batch kernel blends the whole run at once.
+		blendRun(c.Pix, row+x0*4, x1-x0, g, sa, mode)
 	}
 }
 
