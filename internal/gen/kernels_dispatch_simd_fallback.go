@@ -26,4 +26,8 @@ func blendRunSIMD(pix []uint8, di, n int, g, sa float64, mode CompositionMode) {
 	blendRunScalar(pix, di, n, g, sa, mode)
 }
 
+func blendSourceOverSIMD(pix []uint8, di, n int, g, sa float64) {
+	blendRunScalar(pix, di, n, g, sa, ModeSourceOver)
+}
+
 func invertSIMD(pix []uint8) { invertScalar(pix) }
