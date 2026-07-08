@@ -11,12 +11,16 @@ package gen
 // counterparts under the "simd" build tag on amd64.
 
 // fillScalar sets every pixel to an opaque grayscale value (R=G=B=gray, A=255).
+// It seeds one pixel and then replicates the pattern with exponentially growing
+// copy() calls, which lower to the runtime's vectorised memmove and run several
+// times faster than a per-byte store loop while staying pure Go.
 func fillScalar(pix []uint8, gray uint8) {
-	for i := 0; i < len(pix); i += 4 {
-		pix[i] = gray
-		pix[i+1] = gray
-		pix[i+2] = gray
-		pix[i+3] = 255
+	if len(pix) < 4 {
+		return
+	}
+	pix[0], pix[1], pix[2], pix[3] = gray, gray, gray, 255
+	for filled := 4; filled < len(pix); filled *= 2 {
+		copy(pix[filled:], pix[:filled])
 	}
 }
 
