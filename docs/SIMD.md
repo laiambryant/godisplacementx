@@ -66,17 +66,24 @@ scalar per-byte write-back (that write-back is what stalls the float
 `blendRunSIMD`). On a **single wide run** this is ~2–3.5× faster than scalar
 (compute-bound, cache-resident: `BenchmarkSourceOverL2AB`).
 
-Yet it still stays **off the production path**, for a different reason than the
-float kernel: `FillRect` calls `blendRun` once per **scanline** of every
-primitive, and the real draw loop is dominated by *many short runs* (grid / line /
-column cells a few dozen pixels wide). There the per-call vector setup (building
-the coefficient and shuffle-index vectors) is not amortised, and wiring it into
-`blendRun` regresses end-to-end `Generate` ~15×. A production win would require
-hoisting that setup up to `FillRect` (computed once per rect, not per row), or
-otherwise batching the draw loop into wide runs — a larger refactor. Note also
-that on a thermally-limited laptop, sustained heavy-AVX2 blend triggers power
-throttling that a memory-bound wide run cannot escape; the ~2–3.5× figure is the
-un-throttled, compute-bound speed.
+Yet it still stays **off the production path**, and — unlike a simple
+amortisation problem — it could not be rescued. Dispatching it from the draw loop
+regresses end-to-end `Generate` ~15×. The obvious fix, **hoisting** the per-run
+vector setup from the per-scanline `blendRun` up to a per-rect kernel in
+`FillRect` (compute the coefficient/shuffle vectors once per rect, reuse across
+its rows), was implemented and measured — it **did not help** (still ~11–15×
+slower); nor did inlining the row loop to remove the call boundary. Even raising a
+width threshold so that *only a handful* of wide source-over rects (full-width
+lines) take the SIMD path still regressed `Generate` ~5×. The bottleneck is not
+setup amortisation but a **per-dispatch cost** of entering the SIMD kernel from
+the interspersed draw loop (each `FillRect` is bracketed by scalar drawing/RNG
+code) — vector-state / AVX-transition overhead under the experimental toolchain.
+The isolated micro-benchmark speed simply does not survive the real call pattern;
+a genuine win would need the whole draw loop restructured to stay in vector code
+across many primitives, not a localised change. Note separately that on a
+thermally-limited laptop, sustained heavy-AVX2 blend also triggers power
+throttling a memory-bound wide run cannot escape; the ~2–3.5× figure is the
+un-throttled, compute-bound micro-benchmark speed.
 
 So production keeps the **scalar** compositor and uses SIMD only for the
 `Fill`/`Invert` passes. Both `blendRunSIMD` (float, all 16 modes; separable modes
@@ -117,13 +124,15 @@ the scalar kernels always compiled lets the single-binary A/B benchmarks
 
 ## Possible future work
 
-- The integer fixed-point source-over kernel (`blendSourceOverSIMD`) already makes
-  the *per-run* compositor ~2–3.5× faster than scalar (no float conversion). What
-  blocks it from production is the **per-call setup on short runs**, not the
-  per-pixel math: `blendRun` is invoked once per scanline. Hoisting the coefficient
-  and shuffle-index vector setup up to `FillRect` (compute once per rect, reuse
-  across its rows), or restructuring the draw loop to hand the kernel wide runs,
-  would let the win reach `Generate`. Until then the kernel documents the approach.
+- The integer fixed-point source-over kernel (`blendSourceOverSIMD`) makes the
+  *per-run* compositor ~2–3.5× faster than scalar (no float conversion), yet it
+  does not carry to `Generate`: dispatching SIMD from the interspersed draw loop
+  costs more per call than it saves. Setup hoisting to `FillRect` and row-loop
+  inlining were both tried and did not help (~11–15× slower either way; even a few
+  wide SIMD rects regress ~5×) — the wall is per-dispatch vector-state / AVX-
+  transition overhead, not setup. A real win would need the whole draw loop kept in
+  vector code across primitives (a large restructure), or a non-experimental SIMD
+  toolchain with cheaper transitions. Until then the kernel documents the approach.
 - Re-evaluate on AVX-512 hardware, where the `uint16→uint8` narrowing (here a
   `VPSHUFB` gather + partial store) becomes a single `VPMOVUSWB`, and the wider
   conversion/narrowing ops remove the main AVX2 bottleneck.
