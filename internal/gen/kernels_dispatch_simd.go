@@ -81,7 +81,7 @@ func invertRun(pix []uint8) {
 // SIMD build. They remain here as dispatch wrappers for symmetry.
 func colorRun(pix []uint8, p Palette) { colorScalar(pix, p) }
 
-func normalRun(dst, src []uint8, w, h int) { normalScalar(dst, src, w, h) }
+func normalRun(dst, src []uint8, w, h, y0, y1 int) { normalScalar(dst, src, w, h, y0, y1) }
 
 // rgbKeepMask / alphaKeepMask are 32-byte vector masks selecting the R,G,B lanes
 // and the alpha lanes of an 8-pixel block, used for bitwise (AVX2) lane

@@ -2,6 +2,7 @@ package gen
 
 import (
 	"fmt"
+	"io"
 	"testing"
 )
 
@@ -87,7 +88,7 @@ func BenchmarkBlend(b *testing.B) {
 // draw loop, which is dominated by blendRun) at a fixed seed.
 func BenchmarkGenerate(b *testing.B) {
 	p := Default()
-	for _, res := range []int{512, 1024, 2048} {
+	for _, res := range []int{512, 1024, 2048, 4096} {
 		b.Run(fmt.Sprintf("%d", res), func(b *testing.B) {
 			for b.Loop() {
 				g := NewRNG(12345)
@@ -96,5 +97,20 @@ func BenchmarkGenerate(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// BenchmarkEncodePNG measures PNG encoding of a generated canvas, the dominant
+// end-to-end cost of a single render.
+func BenchmarkEncodePNG(b *testing.B) {
+	c, err := Generate(Default(), 2048, 2048, NewRNG(12345))
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.SetBytes(int64(len(c.Pix)))
+	for b.Loop() {
+		if err := EncodePNG(io.Discard, c); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

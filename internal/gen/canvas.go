@@ -39,7 +39,9 @@ func (c *Canvas) Clone() *Canvas {
 
 // Fill sets every pixel to an opaque grayscale value (used for the background).
 func (c *Canvas) Fill(gray uint8) {
-	fillRun(c.Pix, gray)
+	parallelBands(len(c.Pix)/4, parallelMinPixels, func(lo, hi int) {
+		fillRun(c.Pix[lo*4:hi*4], gray)
+	})
 }
 
 // FillRect blends a grayscale rectangle (gray in 0-255, alphaPct in 0-100) onto
@@ -68,65 +70,112 @@ func (c *Canvas) FillRect(x, y, w, h int, gray uint8, alphaPct int, mode Composi
 	}
 	g := float64(gray) / 255
 	sa := float64(alphaPct) / 100
-	rw := x1 - x0
 
 	// Fast path: composite through a 256-entry blend table, turning the per-pixel
 	// float compositor into three table lookups (bit-identical to the scalar path;
-	// see blendlut.go). Build it only for rectangles big enough to amortise the
-	// build, but reuse a cached table for any size — successive rects in a grid /
-	// column / row share one (gray, alpha, mode), so the table is built once.
+	// see blendlut.go).
 	if sa > 0 && lutableMode(mode) {
-		key := blendLUTKey{gray: gray, alpha: alphaPct, mode: mode}
-		hit := c.lutValid && c.lutKey == key
-		if hit || rw*(y1-y0) >= blendLUTMinArea {
-			if !hit {
-				buildBlendLUT(&c.lut, g, sa, mode)
-				c.lutKey, c.lutValid = key, true
-			}
-			for yy := y0; yy < y1; yy++ {
-				row := yy * c.W * 4
-				blendRunLUT(c.Pix, row+x0*4, rw, &c.lut, g, sa, mode)
-			}
+		if lut := c.blendLUTFor(gray, alphaPct, mode, (x1-x0)*(y1-y0)); lut != nil {
+			c.blendRows(x0, y0, x1, y1, func(di, n int) {
+				blendRunLUT(c.Pix, di, n, lut, g, sa, mode)
+			})
 			return
 		}
 	}
 
-	for yy := y0; yy < y1; yy++ {
-		row := yy * c.W * 4
-		// Each row is a contiguous run with a constant grayscale source,
-		// alpha and mode: the batch kernel blends the whole run at once.
-		blendRun(c.Pix, row+x0*4, rw, g, sa, mode)
+	c.blendRows(x0, y0, x1, y1, func(di, n int) {
+		blendRun(c.Pix, di, n, g, sa, mode)
+	})
+}
+
+// blendLUTFor returns the blend table for (gray, alphaPct, mode), reusing the
+// cached one when it matches — successive rects in a grid / column / row share
+// one key, so the table is built once per primitive. It returns nil when no
+// table is cached and the rectangle is too small to amortise a fresh build.
+func (c *Canvas) blendLUTFor(gray uint8, alphaPct int, mode CompositionMode, area int) *[256]uint8 {
+	key := blendLUTKey{gray: gray, alpha: alphaPct, mode: mode}
+	if c.lutValid && c.lutKey == key {
+		return &c.lut
 	}
+	if area < blendLUTMinArea {
+		return nil
+	}
+	buildBlendLUT(&c.lut, float64(gray)/255, float64(alphaPct)/100, mode)
+	c.lutKey, c.lutValid = key, true
+	return &c.lut
+}
+
+// blendRows runs blendRow over every row of the clipped rectangle, splitting
+// the rows across goroutines when the area pays for it. Each row is a
+// contiguous run with a constant source, and blendRow only touches its own
+// pixels, so the split is bit-exact.
+func (c *Canvas) blendRows(x0, y0, x1, y1 int, blendRow func(di, n int)) {
+	rw := x1 - x0
+	parallelBands(y1-y0, minRowsPerBand(rw), func(lo, hi int) {
+		for yy := y0 + lo; yy < y0+hi; yy++ {
+			blendRow(yy*c.W*4+x0*4, rw)
+		}
+	})
 }
 
 // DrawImage composites a straight-alpha source image at (dx, dy) using the given
 // composition mode. The source is expected to already be at its target size.
 func (c *Canvas) DrawImage(src *image.NRGBA, dx, dy int, mode CompositionMode) {
 	b := src.Bounds()
-	sw, sh := b.Dx(), b.Dy()
-	for sy := 0; sy < sh; sy++ {
-		ty := dy + sy
-		if ty < 0 || ty >= c.H {
+	sx0, sy0, sx1, sy1 := clipToCanvas(b.Dx(), b.Dy(), dx, dy, c.W, c.H)
+	if sx0 >= sx1 || sy0 >= sy1 {
+		return
+	}
+	rw := sx1 - sx0
+	parallelBands(sy1-sy0, minRowsPerBand(rw), func(lo, hi int) {
+		for sy := sy0 + lo; sy < sy0+hi; sy++ {
+			srow := src.PixOffset(b.Min.X+sx0, b.Min.Y+sy)
+			drow := (dy+sy)*c.W*4 + (dx+sx0)*4
+			c.drawImageRow(src.Pix[srow:srow+rw*4], drow, mode)
+		}
+	})
+}
+
+// clipToCanvas intersects a sw×sh source placed at (dx, dy) with a w×h canvas
+// and returns the surviving source-coordinate rectangle [sx0,sx1)×[sy0,sy1).
+func clipToCanvas(sw, sh, dx, dy, w, h int) (sx0, sy0, sx1, sy1 int) {
+	sx0, sy0, sx1, sy1 = 0, 0, sw, sh
+	if dx < 0 {
+		sx0 = -dx
+	}
+	if dy < 0 {
+		sy0 = -dy
+	}
+	if dx+sw > w {
+		sx1 = w - dx
+	}
+	if dy+sh > h {
+		sy1 = h - dy
+	}
+	return
+}
+
+// drawImageRow composites one clipped source row (straight RGBA) onto the
+// canvas at byte offset di. Fully transparent pixels are skipped; fully opaque
+// source-over pixels copy straight through (blendInto with sa==1 reduces to
+// the source bytes for any backdrop); everything else takes the exact
+// compositor.
+func (c *Canvas) drawImageRow(srow []uint8, di int, mode CompositionMode) {
+	copyOpaque := mode == ModeSourceOver
+	for o := 0; o+4 <= len(srow); o, di = o+4, di+4 {
+		a := srow[o+3]
+		if a == 0 {
 			continue
 		}
-		srow := src.PixOffset(b.Min.X, b.Min.Y+sy)
-		drow := ty * c.W * 4
-		for sx := 0; sx < sw; sx++ {
-			tx := dx + sx
-			if tx < 0 || tx >= c.W {
-				continue
-			}
-			si := srow + sx*4
-			sa := float64(src.Pix[si+3]) / 255
-			if sa <= 0 {
-				continue
-			}
-			blendInto(c.Pix, drow+tx*4,
-				float64(src.Pix[si])/255,
-				float64(src.Pix[si+1])/255,
-				float64(src.Pix[si+2])/255,
-				sa, mode)
+		if a == 255 && copyOpaque {
+			c.Pix[di], c.Pix[di+1], c.Pix[di+2], c.Pix[di+3] = srow[o], srow[o+1], srow[o+2], 255
+			continue
 		}
+		blendInto(c.Pix, di,
+			float64(srow[o])/255,
+			float64(srow[o+1])/255,
+			float64(srow[o+2])/255,
+			float64(a)/255, mode)
 	}
 }
 

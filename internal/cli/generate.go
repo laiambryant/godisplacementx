@@ -135,12 +135,7 @@ func runGenerate(cmd *cobra.Command, f *generateFlags) error {
 		out = fmt.Sprintf("DisplacementX_%dx%d_%s.png", w, h, ts)
 	}
 
-	file, err := os.Create(out)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	if err := gen.EncodePNG(file, res.Canvas); err != nil {
+	if err := gen.WritePNGFile(out, res.Canvas); err != nil {
 		return err
 	}
 
