@@ -53,43 +53,37 @@ func colorScalar(pix []uint8, p Palette) {
 	}
 }
 
-// normalScalar converts the height field in src into an OpenGL-style normal map
-// via a Sobel-like difference of neighbours, writing into dst. src must be a
-// snapshot of the original buffer (dst and src may not alias). w, h are the
-// canvas dimensions; the row stride is w*4.
-func normalScalar(dst, src []uint8, w, h int) {
+// normalScalar converts rows [y0, y1) of the height field in src into
+// OpenGL-style normal-map pixels in dst via a Sobel-like difference of
+// neighbours. src must be a snapshot of the original buffer (dst and src may
+// not alias); w, h are the full canvas dimensions, so bands can be computed
+// concurrently (each band only writes its own rows and reads src, which is
+// immutable during the pass). Edge pixels clamp to themselves, exactly as the
+// original per-pixel modulo formulation did.
+func normalScalar(dst, src []uint8, w, h, y0, y1 int) {
 	stride := w * 4
-	for i := 0; i < w*h*4; i += 4 {
-		var x1, x2, y1, y2 int
-
-		col := i % stride
-		switch {
-		case col == 0: // left edge
-			x1 = int(src[i])
-			x2 = int(src[i+4])
-		case col == (w-1)*4: // right edge
-			x1 = int(src[i-4])
-			x2 = int(src[i])
-		default:
-			x1 = int(src[i-4])
-			x2 = int(src[i+4])
+	for y := y0; y < y1; y++ {
+		row := y * stride
+		up, down := row-stride, row+stride
+		if y == 0 {
+			up = row
 		}
-
-		switch {
-		case i < stride: // top edge
-			y1 = int(src[i])
-			y2 = int(src[i+stride])
-		case i >= (h-1)*stride: // bottom edge
-			y1 = int(src[i-stride])
-			y2 = int(src[i])
-		default:
-			y1 = int(src[i-stride])
-			y2 = int(src[i+stride])
+		if y == h-1 {
+			down = row
 		}
-
-		dst[i] = clampByte(x1 - x2 + 127)
-		dst[i+1] = clampByte(y1 - y2 + 127)
-		dst[i+2] = 255
-		dst[i+3] = 255
+		for x := 0; x < w; x++ {
+			i := row + x*4
+			left, right := i-4, i+4
+			if x == 0 {
+				left = i
+			}
+			if x == w-1 {
+				right = i
+			}
+			dst[i] = clampByte(int(src[left]) - int(src[right]) + 127)
+			dst[i+1] = clampByte(int(src[up+x*4]) - int(src[down+x*4]) + 127)
+			dst[i+2] = 255
+			dst[i+3] = 255
+		}
 	}
 }

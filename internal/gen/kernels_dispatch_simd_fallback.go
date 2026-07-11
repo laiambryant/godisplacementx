@@ -18,7 +18,7 @@ func invertRun(pix []uint8) { invertScalar(pix) }
 
 func colorRun(pix []uint8, p Palette) { colorScalar(pix, p) }
 
-func normalRun(dst, src []uint8, w, h int) { normalScalar(dst, src, w, h) }
+func normalRun(dst, src []uint8, w, h, y0, y1 int) { normalScalar(dst, src, w, h, y0, y1) }
 
 func fillSIMD(pix []uint8, gray uint8) { fillScalar(pix, gray) }
 

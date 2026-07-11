@@ -63,15 +63,19 @@ func buildBlendLUT(lut *[256]uint8, g, sa float64, mode CompositionMode) {
 // byte offset di using a prebuilt LUT for the opaque-backdrop case. Any pixel whose
 // backdrop is not fully opaque falls back to the exact scalar compositor, so the
 // result is byte-identical to blendRunScalar.
+//
+// The run is resliced up front so the loop condition itself proves every access
+// in range and the compiler drops the per-access bounds checks (the []uint8
+// indexing dominated the profile before this).
 func blendRunLUT(pix []uint8, di, n int, lut *[256]uint8, g, sa float64, mode CompositionMode) {
-	for k := 0; k < n; k++ {
-		o := di + k*4
-		if pix[o+3] == 255 {
-			pix[o] = lut[pix[o]]
-			pix[o+1] = lut[pix[o+1]]
-			pix[o+2] = lut[pix[o+2]]
+	run := pix[di : di+n*4]
+	for o := 0; o+4 <= len(run); o += 4 {
+		if run[o+3] == 255 {
+			run[o] = lut[run[o]]
+			run[o+1] = lut[run[o+1]]
+			run[o+2] = lut[run[o+2]]
 		} else {
-			blendInto(pix, o, g, g, g, sa, mode)
+			blendInto(pix, di+o, g, g, g, sa, mode)
 		}
 	}
 }
