@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"html"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -45,6 +46,8 @@ func mustContain(t *testing.T, body, sub, label string) {
 }
 
 // extractDataURL pulls the first data:image/png;base64 URL out of an HTML body.
+// html/template entity-escapes '+' inside attributes (a browser un-escapes it
+// when parsing), so the attribute text must be unescaped before decoding.
 func extractDataURL(t *testing.T, body string) []byte {
 	t.Helper()
 	const prefix = "data:image/png;base64,"
@@ -57,7 +60,7 @@ func extractDataURL(t *testing.T, body string) []byte {
 	if end < 0 {
 		t.Fatal("unterminated data URL")
 	}
-	raw, err := base64.StdEncoding.DecodeString(rest[:end])
+	raw, err := base64.StdEncoding.DecodeString(html.UnescapeString(rest[:end]))
 	if err != nil {
 		t.Fatalf("base64 decode: %v", err)
 	}
@@ -129,7 +132,9 @@ func TestSameSeedIsReproducible(t *testing.T) {
 	a := doForm(t, h, "POST", "/api/render", form)
 	b := doForm(t, h, "POST", "/api/render", form)
 	mustContain(t, a, `name="seed" value="7"`, "seed passthrough")
-	if a != b {
+	// Compare the rendered PNGs, not the whole body: the monitor also reports
+	// the wall-clock render duration, which legitimately varies between runs.
+	if !bytes.Equal(extractDataURL(t, a), extractDataURL(t, b)) {
 		t.Error("same seed produced different output")
 	}
 }

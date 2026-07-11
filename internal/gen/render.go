@@ -4,7 +4,6 @@ import (
 	cryptorand "crypto/rand"
 	"encoding/binary"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 )
@@ -146,7 +145,7 @@ func RenderBundle(p Params, w, h int, invert bool, gradient []ColorRGB, emits []
 				if invert {
 					ApplyInvert(c)
 				}
-				if err := writePNG(e.Path, c); err != nil {
+				if err := WritePNGFile(e.Path, c); err != nil {
 					errs[k] = err
 					return
 				}
@@ -161,19 +160,6 @@ func RenderBundle(p Params, w, h int, invert bool, gradient []ColorRGB, emits []
 		}
 	}
 	return nil
-}
-
-// writePNG encodes a canvas to a PNG file, closing it cleanly on success or error.
-func writePNG(path string, c *Canvas) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	if err := EncodePNG(f, c); err != nil {
-		f.Close()
-		return err
-	}
-	return f.Close()
 }
 
 // RandomSeed returns a cryptographically random seed.

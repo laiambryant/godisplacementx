@@ -52,3 +52,22 @@ jobs:
       - name: Test (race + coverage)
         if: matrix.os == 'ubuntu-latest'
         run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+
+  simd:
+    name: SIMD variant (amd64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # Builds and tests the experimental simd/archsimd variant (GOEXPERIMENT=simd
+      # + -tags simd, amd64/AVX2), driven through the Makefile. A short benchmark
+      # run smoke-tests the kernels. make is preinstalled on the ubuntu runner.
+      - name: Build SIMD CLI
+        run: make cli-simd
+      - name: Test SIMD variant
+        run: make test-simd
+      - name: Benchmark smoke test
+        run: make bench-simd BENCH='FillAB|InvertAB' BENCHTIME=20ms
