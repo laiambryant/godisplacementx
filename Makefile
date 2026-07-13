@@ -29,7 +29,7 @@ BENCH ?= .
 BENCHTIME ?= 1s
 COUNT ?= 6
 
-.PHONY: all help cli cli-simd gui test test-simd bench bench-simd bench-compare lint sprites clean release
+.PHONY: all help cli cli-simd gui test test-simd cover cover-check bench bench-simd bench-compare lint sprites clean release
 
 all: cli gui
 
@@ -66,6 +66,15 @@ test:
 
 test-simd:
 	GOEXPERIMENT=simd $(GO) test -tags simd ./... -count=1
+
+# Coverage of record: the default (pure-Go CLI) build on the host platform.
+# CI runs this on Linux, where every compiled statement must be covered.
+cover:
+	$(GO) test ./... -count=1 -covermode=atomic -coverprofile=coverage.out
+	$(GO) tool cover -func=coverage.out | tail -1
+
+cover-check: cover
+	@$(GO) tool cover -func=coverage.out | awk '/^total:/ { if ($$3 != "100.0%") { print "FAIL: statement coverage is " $$3 ", want 100.0%"; exit 1 } print "OK: statement coverage " $$3 }'
 
 bench:
 	$(GO) test -run '^$$' -bench '$(BENCH)' -benchmem -benchtime=$(BENCHTIME) $(BENCH_PKG)

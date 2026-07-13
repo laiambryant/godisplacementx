@@ -49,9 +49,14 @@ jobs:
         run: go build ./...
       - name: Test
         run: go test ./... -count=1
-      - name: Test (race + coverage)
+      - name: Test (race)
         if: matrix.os == 'ubuntu-latest'
-        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+        run: go test -race -covermode=atomic ./... -count=1
+      # The coverage badge in the README is backed by this gate: the default
+      # (pure-Go CLI) build must stay at 100% statement coverage on Linux.
+      - name: Enforce 100% coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: make cover-check
 
   simd:
     name: SIMD variant (amd64)

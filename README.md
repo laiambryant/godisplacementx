@@ -1,5 +1,12 @@
 # godisplacementx
 
+[![CI](https://github.com/laiambryant/godisplacementx/actions/workflows/ci.yml/badge.svg)](https://github.com/laiambryant/godisplacementx/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/laiambryant/godisplacementx/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/laiambryant/godisplacementx)](https://goreportcard.com/report/github.com/laiambryant/godisplacementx)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/laiambryant/godisplacementx)](go.mod)
+[![Release](https://img.shields.io/github/v/release/laiambryant/godisplacementx)](https://github.com/laiambryant/godisplacementx/releases)
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
+
 A Go port of [Displacement X](https://displacementx.pages.dev/) — a procedural
 generator of grayscale **displacement / height maps** (a sci-fi "JSplacement"
 aesthetic) for 3D software such as Blender, Cinema4D and Octane.
@@ -129,7 +136,14 @@ npm run rasterize
 ```sh
 make test        # go test ./...
 make test-simd   # same, with GOEXPERIMENT=simd -tags simd (amd64)
+make cover       # coverage profile + total
+make cover-check # fail unless statement coverage is 100%
 ```
+
+The default (pure-Go CLI) build is kept at **100% statement coverage**: CI runs
+`make cover-check` on Linux and fails the build if any compiled statement is
+untested. (The Wails GUI behind the `desktop` build tag needs a platform
+WebView and is exercised separately via the `bindings`-tagged HTTP tests.)
 
 ## Credits
 
