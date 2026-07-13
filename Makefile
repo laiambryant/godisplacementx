@@ -14,6 +14,33 @@ BIN_DIR := build/bin
 DIST_DIR := dist
 BENCH_PKG := ./internal/gen
 
+# GNU Make on Windows runs recipes via cmd.exe unless it finds a POSIX shell on
+# PATH. Git for Windows only adds its `cmd` dir (git.exe) to PATH by default,
+# not `bin`/`usr\bin` (sh.exe) — so `make` invoked from a plain PowerShell/cmd
+# prompt silently falls back to cmd.exe and every recipe below (which is POSIX
+# sh) breaks with cryptic "system cannot find the path specified" errors.
+# Locate Git's own sh.exe next to git.exe (already required on PATH for
+# $(VERSION) below) and force it, regardless of the invoking shell.
+# Probed with an explicit cmd.exe invocation (not "$(shell where ...)" /
+# "$(shell if exist ...)" directly) so this detection is unambiguous whether
+# Make's own ambient default shell is already cmd.exe (plain PowerShell/cmd)
+# or sh.exe (invoked from within Git Bash, where these two probe lines are
+# not valid syntax and would otherwise print a spurious parse error).
+ifeq ($(OS),Windows_NT)
+# No stderr redirect here: "2>NUL" is parsed by whichever shell is ambient
+# when $(shell) runs this line, not by the nested cmd.exe — under Git Bash's
+# sh that creates a literal file named NUL in the repo root instead of
+# discarding output. $(shell) only captures stdout anyway, so it's not needed.
+GIT_EXE := $(shell cmd.exe /c where git)
+GIT_SH := $(subst \cmd\git.exe,\bin\sh.exe,$(GIT_EXE))
+GIT_SH_EXISTS := $(shell cmd.exe /c if exist "$(GIT_SH)" echo yes)
+ifeq ($(GIT_SH_EXISTS),yes)
+SHELL := $(GIT_SH)
+.SHELLFLAGS := -c
+.ONESHELL:
+endif
+endif
+
 GOOS := $(shell $(GO) env GOOS)
 EXE :=
 ifeq ($(GOOS),windows)
@@ -97,7 +124,7 @@ sprites:
 	cd tools/rasterize-sprites && npm install && npm run rasterize
 
 clean:
-	rm -rf $(BIN_DIR) $(DIST_DIR) bench-scalar.txt bench-simd.txt
+	rm -rf $(BIN_DIR) $(DIST_DIR) bench-scalar.txt bench-simd.txt;
 
 # Local mirror of .github/workflows/release.yml: pure-Go CLI, 5 targets.
 release:
@@ -108,7 +135,9 @@ release:
 	  echo "==> $$os/$$arch"; \
 	  CGO_ENABLED=0 GOOS="$$os" GOARCH="$$arch" $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o "build/godisplacementx-cli$$ext" .; \
 	  base="godisplacementx-cli_$(VERSION)_$${os}_$${arch}"; \
-	  if [ "$$os" = windows ]; then (cd build && zip -q "../$(DIST_DIR)/$$base.zip" "godisplacementx-cli$$ext"); \
+	  if [ "$$os" = windows ]; then \
+	    if command -v zip >/dev/null 2>&1; then (cd build && zip -q "../$(DIST_DIR)/$$base.zip" "godisplacementx-cli$$ext"); \
+	    else powershell.exe -NoProfile -Command "Compress-Archive -Path 'build/godisplacementx-cli$$ext' -DestinationPath '$(DIST_DIR)/$$base.zip' -Force"; fi; \
 	  else tar -C build -czf "$(DIST_DIR)/$$base.tar.gz" "godisplacementx-cli$$ext"; fi; \
 	  rm -f "build/godisplacementx-cli$$ext"; \
 	done; \

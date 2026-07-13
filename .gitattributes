@@ -1,0 +1,21 @@
+* text=auto eol=lf
+
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+Makefile text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.svg text eol=lf
+
+# Binary assets: never touch, never diff as text.
+*.png binary
+*.ico binary
+*.woff2 binary
