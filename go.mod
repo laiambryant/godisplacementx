@@ -3,6 +3,7 @@ module godisplacementx
 go 1.26.2
 
 require (
+	github.com/klauspost/compress v1.19.0
 	github.com/spf13/cobra v1.10.2
 	github.com/wailsapp/wails/v2 v2.12.0
 	golang.org/x/image v0.12.0
