@@ -12,18 +12,21 @@ import (
 	"godisplacementx/internal/cli"
 )
 
+var exitFunc = os.Exit
+
 func main() {
-	// Any arguments => run the CLI. No arguments => open the GUI.
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		exitFunc(1)
+	}
+}
+
+// run dispatches on the invocation shape: any arguments => the CLI, no
+// arguments => the GUI.
+func run() error {
 	if len(os.Args) > 1 {
 		attachParentConsole()
-		if err := cli.Execute(); err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
-			os.Exit(1)
-		}
-		return
+		return cli.Execute()
 	}
-	if err := runGUI(); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
-	}
+	return runGUI()
 }

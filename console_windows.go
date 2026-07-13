@@ -17,6 +17,10 @@ func attachParentConsole() {
 	if r, _, _ := proc.Call(attachParentProcess); r == 0 {
 		return // no parent console (or already attached)
 	}
+	bindConsoleStreams()
+}
+
+func bindConsoleStreams() {
 	if out, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
 		os.Stdout = out
 		os.Stderr = out
