@@ -6,7 +6,15 @@ package gen
 // and height are accepted independently but several formulas use width for both
 // axes exactly as the original does.
 func Generate(p Params, width, height int, g *RNG) (*Canvas, error) {
+	return generateWith(p, width, height, g, false)
+}
+
+// generateWith is Generate plus the fast-mode switch: fast enables the
+// non-deterministic approximate sprite paths (fast compositor and scaler),
+// while the RNG stream and every non-sprite primitive stay identical.
+func generateWith(p Params, width, height int, g *RNG, fast bool) (*Canvas, error) {
 	c := NewCanvas(width, height)
+	c.fast = fast
 	c.Fill(uint8(clampInt(p.BackgroundBrightness, 0, 255)))
 
 	var sprites *SpriteSet
@@ -229,7 +237,7 @@ func drawSprite(c *Canvas, g *RNG, p Params, sprites *SpriteSet, mode Compositio
 	if p.SpritesRotationEnabled {
 		rot = angle
 	}
-	img := sprites.Render(idx, size, rot)
+	img := sprites.Render(idx, size, rot, c.fast)
 	if img == nil {
 		return
 	}

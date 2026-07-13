@@ -36,7 +36,7 @@ func TestRenderBundleWritesAllOutputs(t *testing.T) {
 		{Mode: OutputColor, Path: color, Seed: seed},
 		{Mode: OutputNormal, Path: normal, Seed: seed},
 	}
-	if err := RenderBundle(Default(), 48, 48, false, DefaultGradient(), emits); err != nil {
+	if err := RenderBundle(Default(), 48, 48, false, DefaultGradient(), emits, false); err != nil {
 		t.Fatalf("RenderBundle: %v", err)
 	}
 
@@ -65,7 +65,7 @@ func TestRenderBundleSeedReuseAndIndependence(t *testing.T) {
 		{Mode: OutputGrayscale, Path: b, Seed: 7},
 		{Mode: OutputGrayscale, Path: c, Seed: 8},
 	}
-	if err := RenderBundle(Default(), 48, 48, false, nil, emits); err != nil {
+	if err := RenderBundle(Default(), 48, 48, false, nil, emits, false); err != nil {
 		t.Fatalf("RenderBundle: %v", err)
 	}
 
@@ -78,10 +78,10 @@ func TestRenderBundleSeedReuseAndIndependence(t *testing.T) {
 }
 
 func TestRenderBundleRejectsBadInput(t *testing.T) {
-	if err := RenderBundle(Default(), 0, 48, false, nil, []EmitSpec{{Mode: OutputGrayscale, Path: "x.png"}}); err == nil {
+	if err := RenderBundle(Default(), 0, 48, false, nil, []EmitSpec{{Mode: OutputGrayscale, Path: "x.png"}}, false); err == nil {
 		t.Errorf("expected error for invalid size")
 	}
-	if err := RenderBundle(Default(), 48, 48, false, nil, nil); err == nil {
+	if err := RenderBundle(Default(), 48, 48, false, nil, nil, false); err == nil {
 		t.Errorf("expected error for empty emits")
 	}
 }

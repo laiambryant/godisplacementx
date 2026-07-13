@@ -1,14 +1,10 @@
 package gen
 
 import (
-	"bytes"
 	"embed"
-	"fmt"
 	"image"
 	"image/draw"
-	"image/png"
-
-	xdraw "golang.org/x/image/draw"
+	"io/fs"
 )
 
 // Sprites are pre-rasterized from the original SVGs into PNGs at spriteBaseSize
@@ -16,7 +12,11 @@ import (
 // SVG rasterizer mishandling complex sprites (clipPath/use) or being slow.
 //
 //go:embed assets/sprites_png
-var spritesFS embed.FS
+var embeddedSprites embed.FS
+
+// spriteFS is the sprite source; a var so tests can inject a broken filesystem
+// to exercise the load error paths.
+var spriteFS fs.FS = embeddedSprites
 
 // spriteBaseSize is the resolution of the embedded sprite PNGs. Draws scale this
 // raster to the requested size.
@@ -25,12 +25,15 @@ const spriteBaseSize = 512
 // SpriteSet is the flattened, ordered collection of sprite base images for the
 // selected packs. The order matches getSprites() in store.ts: packs are added in
 // the fixed order classic, bigdata, aggromaxx, crappack, regardless of selection
-// order, each numbered 1..N.
+// order, each numbered 1..N. The base images are shared with the process-wide
+// decode cache and must never be mutated.
 type SpriteSet struct {
 	base []*image.NRGBA
 }
 
-// LoadSprites decodes the embedded sprite PNGs for the selected packs.
+// LoadSprites assembles the sprite set for the selected packs from the
+// process-wide decode cache (spritecache.go); packs keep the fixed canonical
+// order regardless of selection order.
 func LoadSprites(packs []SpritesPack) (*SpriteSet, error) {
 	selected := map[SpritesPack]bool{}
 	for _, p := range packs {
@@ -41,19 +44,11 @@ func LoadSprites(packs []SpritesPack) (*SpriteSet, error) {
 		if !selected[pack] {
 			continue
 		}
-		count := spritePackCounts[pack]
-		for i := 1; i <= count; i++ {
-			path := fmt.Sprintf("assets/sprites_png/%s/%d.png", pack, i)
-			data, err := spritesFS.ReadFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("read sprite %s: %w", path, err)
-			}
-			img, err := png.Decode(bytes.NewReader(data))
-			if err != nil {
-				return nil, fmt.Errorf("decode sprite %s: %w", path, err)
-			}
-			s.base = append(s.base, toNRGBA(img))
+		base, err := loadSpritePack(pack)
+		if err != nil {
+			return nil, err
 		}
+		s.base = append(s.base, base...)
 	}
 	return s, nil
 }
@@ -71,21 +66,22 @@ func toNRGBA(img image.Image) *image.NRGBA {
 func (s *SpriteSet) Len() int { return len(s.base) }
 
 // Render produces sprite index at size×size, rotated by angleDeg (a multiple of
-// 90). It scales the base raster rather than re-rasterizing.
-func (s *SpriteSet) Render(index, size, angleDeg int) *image.NRGBA {
+// 90). It scales the base raster rather than re-rasterizing; scaling and
+// rotation run as one fused pass (spritescale.go, or the fixed-point
+// spritescale_fast.go variant when fast is set).
+func (s *SpriteSet) Render(index, size, angleDeg int, fast bool) *image.NRGBA {
 	if index < 0 || index >= len(s.base) || size <= 0 {
 		return nil
 	}
 	base := s.base[index]
-
-	var scaled *image.NRGBA
 	if size == base.Bounds().Dx() {
-		scaled = base
-	} else {
-		scaled = image.NewNRGBA(image.Rect(0, 0, size, size))
-		xdraw.ApproxBiLinear.Scale(scaled, scaled.Bounds(), base, base.Bounds(), xdraw.Src, nil)
+		return rotateNRGBA(base, angleDeg)
 	}
-	return rotateNRGBA(scaled, angleDeg)
+	rot := ((angleDeg % 360) + 360) % 360
+	if fast {
+		return scaleRotateNRGBAFast(base, size, rot)
+	}
+	return scaleRotateNRGBA(base, size, rot)
 }
 
 // rotateNRGBA rotates a square image clockwise by a multiple of 90 degrees.

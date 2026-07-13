@@ -21,12 +21,10 @@ func NewRNG(seed uint64) *RNG {
 
 // NewRandomRNG returns an RNG seeded from a cryptographically random source,
 // matching the original's unseeded Math.random() behaviour (each run differs).
+// crypto/rand.Read never fails (guaranteed since Go 1.24).
 func NewRandomRNG() *RNG {
 	var b [16]byte
-	if _, err := cryptorand.Read(b[:]); err != nil {
-		// Extremely unlikely; fall back to a fixed-ish seed.
-		return NewRNG(0xdead_beef_cafe_f00d)
-	}
+	_, _ = cryptorand.Read(b[:])
 	s1 := binary.LittleEndian.Uint64(b[0:8])
 	s2 := binary.LittleEndian.Uint64(b[8:16])
 	return &RNG{r: rand.New(rand.NewPCG(s1, s2))}

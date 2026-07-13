@@ -33,6 +33,7 @@ type generateFlags struct {
 	invert           bool
 	gradient         string
 	randomize        bool
+	fast             bool
 }
 
 func newGenerateCmd() *cobra.Command {
@@ -73,6 +74,7 @@ Parameters come from defaults, an optional --config JSON file, optional
 	fl.BoolVar(&f.invert, "invert", false, "invert the output colours")
 	fl.StringVar(&f.gradient, "gradient", "", "color-mode gradient stops, e.g. \"#00ffff,#9500ff,#ffe500\"")
 	fl.BoolVar(&f.randomize, "randomize", false, "randomize all parameters before applying explicit flags")
+	fl.BoolVar(&f.fast, "fast", false, "fast non-deterministic mode: visually equivalent output that is not bit-exact or reproducible across runs")
 
 	return cmd
 }
@@ -124,6 +126,7 @@ func runGenerate(cmd *cobra.Command, f *generateFlags) error {
 		Mode:     gen.OutputMode(f.mode),
 		Invert:   f.invert,
 		Gradient: gradient,
+		Fast:     f.fast,
 	})
 	if err != nil {
 		return err
@@ -135,7 +138,7 @@ func runGenerate(cmd *cobra.Command, f *generateFlags) error {
 		out = fmt.Sprintf("DisplacementX_%dx%d_%s.png", w, h, ts)
 	}
 
-	if err := gen.WritePNGFile(out, res.Canvas); err != nil {
+	if err := gen.WriteMapFile(out, res.Canvas, gen.OutputMode(f.mode), f.fast); err != nil {
 		return err
 	}
 

@@ -19,6 +19,7 @@ type bundleFlags struct {
 	invert     bool
 	gradient   string
 	emits      []string
+	fast       bool
 }
 
 func newBundleCmd() *cobra.Command {
@@ -53,6 +54,7 @@ The --emit value is "mode:path" or "mode:seed:path"; the path may contain colons
 	fl.BoolVar(&f.invert, "invert", false, "invert the output colours")
 	fl.StringVar(&f.gradient, "gradient", "", "color-mode gradient stops, e.g. \"#00ffff,#9500ff,#ffe500\"")
 	fl.StringArrayVar(&f.emits, "emit", nil, "output map: \"mode:path\" or \"mode:seed:path\" (repeatable)")
+	fl.BoolVar(&f.fast, "fast", false, "fast non-deterministic mode: visually equivalent output that is not bit-exact or reproducible across runs")
 
 	return cmd
 }
@@ -97,7 +99,7 @@ func runBundle(cmd *cobra.Command, f *bundleFlags) error {
 		emits = append(emits, e)
 	}
 
-	return gen.RenderBundle(params, w, h, f.invert, gradient, emits)
+	return gen.RenderBundle(params, w, h, f.invert, gradient, emits, f.fast)
 }
 
 // parseEmit parses a single --emit value. Format is "mode:path" or

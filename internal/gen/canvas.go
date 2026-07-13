@@ -22,6 +22,12 @@ type Canvas struct {
 	lut      [256]uint8
 	lutKey   blendLUTKey
 	lutValid bool
+
+	// fast selects the non-deterministic approximate sprite paths (composefast,
+	// spritescale_fast). Like lut it is scratch render state, not image data,
+	// and is not copied by Clone: clones are only post-processed and encoded,
+	// which never consult the flag.
+	fast bool
 }
 
 // NewCanvas allocates a fully transparent canvas.
@@ -127,11 +133,15 @@ func (c *Canvas) DrawImage(src *image.NRGBA, dx, dy int, mode CompositionMode) {
 		return
 	}
 	rw := sx1 - sx0
+	blendImageRow := (*Canvas).drawImageRow
+	if c.fast {
+		blendImageRow = (*Canvas).drawImageRowFast
+	}
 	parallelBands(sy1-sy0, minRowsPerBand(rw), func(lo, hi int) {
 		for sy := sy0 + lo; sy < sy0+hi; sy++ {
 			srow := src.PixOffset(b.Min.X+sx0, b.Min.Y+sy)
 			drow := (dy+sy)*c.W*4 + (dx+sx0)*4
-			c.drawImageRow(src.Pix[srow:srow+rw*4], drow, mode)
+			blendImageRow(c, src.Pix[srow:srow+rw*4], drow, mode)
 		}
 	})
 }

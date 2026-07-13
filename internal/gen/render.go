@@ -28,6 +28,10 @@ type RenderRequest struct {
 	Mode     OutputMode
 	Invert   bool
 	Gradient []ColorRGB // used when Mode == OutputColor; defaults if empty
+	// Fast trades the bit-exact determinism contract for speed: output is
+	// visually equivalent (within a couple of units per channel) but not
+	// reproducible byte-for-byte across runs, machines or versions.
+	Fast bool
 }
 
 // RenderResult is the outcome of a render.
@@ -51,7 +55,7 @@ func Render(req RenderRequest) (*RenderResult, error) {
 
 	start := time.Now()
 	g := NewRNG(seed)
-	c, err := Generate(req.Params, req.Width, req.Height, g)
+	c, err := generateWith(req.Params, req.Width, req.Height, g, req.Fast)
 	if err != nil {
 		return nil, err
 	}
@@ -104,9 +108,11 @@ type EmitSpec struct {
 // RenderBundle generates every distinct height field exactly once (running the
 // unique seeds concurrently) and writes each requested output map. This replaces
 // N separate process spawns + N Generate passes with a single in-process render,
-// which is the dominant cost. Post-processing (color/normal/invert) is cheap and
-// runs per emit on a private copy of the shared field.
-func RenderBundle(p Params, w, h int, invert bool, gradient []ColorRGB, emits []EmitSpec) error {
+// which is the dominant cost. Emits sharing a seed post-process and write in
+// parallel, each on a private copy of the shared field — except plain grayscale
+// with no invert, which reads the shared field directly (eliding a full-canvas
+// clone). fast selects the non-deterministic fast paths (see RenderRequest.Fast).
+func RenderBundle(p Params, w, h int, invert bool, gradient []ColorRGB, emits []EmitSpec, fast bool) error {
 	if w <= 0 || h <= 0 {
 		return fmt.Errorf("invalid size %dx%d", w, h)
 	}
@@ -124,33 +130,24 @@ func RenderBundle(p Params, w, h int, invert bool, gradient []ColorRGB, emits []
 		bySeed[e.Seed] = append(bySeed[e.Seed], i)
 	}
 
-	errs := make([]error, len(order))
+	errs := make([]error, len(emits))
 	var wg sync.WaitGroup
-	for k, seed := range order {
-		wg.Add(1)
-		go func(k int, seed uint64) {
-			defer wg.Done()
-			base, err := Generate(p, w, h, NewRNG(seed))
+	for _, seed := range order {
+		indices := bySeed[seed]
+		wg.Go(func() {
+			base, err := generateWith(p, w, h, NewRNG(seed), fast)
 			if err != nil {
-				errs[k] = err
+				errs[indices[0]] = err
 				return
 			}
-			for _, idx := range bySeed[seed] {
-				e := emits[idx]
-				c := base.Clone()
-				if err := applyMode(c, e.Mode, gradient); err != nil {
-					errs[k] = err
-					return
-				}
-				if invert {
-					ApplyInvert(c)
-				}
-				if err := WritePNGFile(e.Path, c); err != nil {
-					errs[k] = err
-					return
-				}
+			var emitWG sync.WaitGroup
+			for _, idx := range indices {
+				emitWG.Go(func() {
+					errs[idx] = writeEmit(base, emits[idx], invert, gradient, fast)
+				})
 			}
-		}(k, seed)
+			emitWG.Wait()
+		})
 	}
 	wg.Wait()
 
@@ -162,11 +159,38 @@ func RenderBundle(p Params, w, h int, invert bool, gradient []ColorRGB, emits []
 	return nil
 }
 
-// RandomSeed returns a cryptographically random seed.
+// writeEmit post-processes one output map and writes it. Modes that transform
+// pixels work on a private clone; plain grayscale output writes straight from
+// the shared field, which concurrent emits only read.
+func writeEmit(base *Canvas, e EmitSpec, invert bool, gradient []ColorRGB, fast bool) error {
+	c := base
+	if emitTransformsPixels(e.Mode, invert) {
+		c = base.Clone()
+		if err := applyMode(c, e.Mode, gradient); err != nil {
+			return err
+		}
+		if invert {
+			ApplyInvert(c)
+		}
+	}
+	return WriteMapFile(e.Path, c, e.Mode, fast)
+}
+
+func emitTransformsPixels(mode OutputMode, invert bool) bool {
+	if invert {
+		return true
+	}
+	switch mode {
+	case OutputGrayscale, "":
+		return false
+	}
+	return true
+}
+
+// RandomSeed returns a cryptographically random seed. crypto/rand.Read never
+// fails (guaranteed since Go 1.24).
 func RandomSeed() uint64 {
 	var b [8]byte
-	if _, err := cryptorand.Read(b[:]); err != nil {
-		return uint64(time.Now().UnixNano())
-	}
+	_, _ = cryptorand.Read(b[:])
 	return binary.LittleEndian.Uint64(b[:])
 }

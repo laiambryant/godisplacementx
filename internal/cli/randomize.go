@@ -25,14 +25,12 @@ func newRandomizeCmd() *cobra.Command {
 			p := gen.Default()
 			p.Randomize(gen.NewRNG(s))
 
-			data, err := json.MarshalIndent(p, "", "  ")
-			if err != nil {
-				return err
-			}
+			// Params is plain data; MarshalIndent cannot fail on it.
+			data, _ := json.MarshalIndent(p, "", "  ")
 			data = append(data, '\n')
 
 			if out == "" {
-				_, err = os.Stdout.Write(data)
+				_, err := os.Stdout.Write(data)
 				return err
 			}
 			if err := os.WriteFile(out, data, 0o644); err != nil {
